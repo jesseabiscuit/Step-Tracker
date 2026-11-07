@@ -1,13 +1,12 @@
 /* 
-Date Finished: 11-4-26
-This code gets the raw sensor data from the ADXL345 and multiplies it by the scale factor
-to obtain values in terms of g's.
+Date: 11-7-26
+[Incomplete Commit] Working through the tutorial but playing around to see what I can move around and not do exactly the same. 
 
 Parts:
 Arduino UNO R3
 ADXL345
 
-Uses tutorial linked:
+Used tutorial linked:
 https://controllerstech.com/adxl345-arduino-i2c-tutorial/
 */
 
@@ -15,12 +14,18 @@ https://controllerstech.com/adxl345-arduino-i2c-tutorial/
 
 #define ADXL345_ADDR 0x53
 float scaleFactor = 256.0; // For ±2g full-resolution mode
+float xOffset = 0.0, yOffset = 0.0, zOffset = 0.0;
 
+int16_t xRaw = 0, yRaw = 0, zRaw = 0;
+int samples = 200;
+
+long xSum = 0, ySum = 0, zSum = 0;
+long xNew = 0, yNew = 0, zNew = 0; 
 
 void setup() {
   Serial.begin(9600);
   Wire.begin();
-
+  
   // --- Put ADXL345 into Measurement Mode ---
   Wire.beginTransmission(ADXL345_ADDR);
   Wire.write(0x2D);     // POWER_CTL register
@@ -33,43 +38,58 @@ void setup() {
   Wire.write(0x08);     // Full Resolution + ±2g range
   Wire.endTransmission();
 
-  // --- Set Data Rate to 100 Hz ---
-  Wire.beginTransmission(ADXL345_ADDR);
-  Wire.write(0x2C);     // BW_RATE register
-  Wire.write(0x0A);     // 100 Hz output data rate
-  Wire.endTransmission();
+  delay(200);
+  Serial.println("Calibrating...");
+
+    for (int i = 0; i <samples; i++) {
+    
+      // Select starting register
+    Wire.beginTransmission(ADXL345_ADDR);
+    Wire.write(0x32);  
+    Wire.endTransmission(false);
+
+      // Read 6 bytes for X, Y, Z
+    Wire.requestFrom(ADXL345_ADDR, 6, true);
+
+    xRaw = (Wire.read() | (Wire.read() << 8));
+    yRaw = (Wire.read() | (Wire.read() << 8));
+    zRaw = (Wire.read() | (Wire.read() << 8));
+
+    xSum += xRaw;
+    ySum += yRaw;
+    zSum += zRaw;
+
+    delay(5);
+  }
+
+  Serial.println("Calibration Complete:");
+  Serial.print("X Offset: "); Serial.println(xOffset);
+  Serial.print("Y Offset: "); Serial.println(yOffset);
+  Serial.print("Z Offset: "); Serial.println(zOffset);
 
   Serial.println("ADXL345 Initialized...");
 }
 
 void loop() {
-  int16_t xRaw, yRaw, zRaw;
+  
 
-  // Select starting register
-  Wire.beginTransmission(ADXL345_ADDR);
-  Wire.write(0x32);  
-  Wire.endTransmission(false);
+  // Establish offset based on averages that will be re-defined during the loop function
+  float xOffset = xSum / samples;
+  float yOffset = ySum / samples;
+  float zOffset = (zSum / samples) - scaleFactor;
 
-  // Read 6 bytes for X, Y, Z
-  Wire.requestFrom(ADXL345_ADDR, 6, true);
-
-  xRaw = (Wire.read() | (Wire.read() << 8));
-  yRaw = (Wire.read() | (Wire.read() << 8));
-  zRaw = (Wire.read() | (Wire.read() << 8));
-
-  Serial.print("X Raw: "); Serial.print(xRaw);
-  Serial.print("  | Y Raw: "); Serial.print(yRaw);
-  Serial.print("  | Z Raw: "); Serial.println(zRaw);
-
+  // Subtract offsets from Future Readings
+  float xNew = xRaw - xOffset;
+  float yNew = yRaw - yOffset;
+  float zNew = zRaw - zOffset;
   // Convert to g
-  float xg = xRaw / scaleFactor;
-  float yg = yRaw / scaleFactor;
-  float zg = zRaw / scaleFactor;
+  float xg = xNew / scaleFactor;
+  float yg = yNew / scaleFactor;
+  float zg = zNew / scaleFactor;
 
   Serial.print("X (g): "); Serial.print(xg);
   Serial.print("  | Y (g): "); Serial.print(yg);
   Serial.print("  | Z (g): "); Serial.println(zg);
-
 
   delay(300);
 }
